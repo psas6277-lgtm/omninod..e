@@ -1,0 +1,43 @@
+name: Build APK
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find project
+        run: |
+          if ls *.zip >/dev/null 2>&1; then
+            unzip -q "$(ls *.zip | head -1)" -d _src
+            echo "PROJ=$(dirname "$(find _src -name settings.gradle.kts | head -1)")" >> $GITHUB_ENV
+          else
+            echo "PROJ=." >> $GITHUB_ENV
+          fi
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+      - name: Build
+        working-directory: ${{ env.PROJ }}
+        run: |
+          mkdir -p ~/.android
+          [ -f ~/.android/debug.keystore ] || keytool -genkey -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          gradle --no-daemon :app:assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/OmniNode.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OmniNode-apk
+          path: OmniNode.apk
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: OmniNode.apk
